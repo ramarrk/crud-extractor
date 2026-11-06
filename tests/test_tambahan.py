@@ -48,3 +48,12 @@ def test_tepi_kolom_tanpa_qualifier_dua_tabel_ambigu():
             if isinstance(c, ast.ColumnRef) and c.name == "nama"][0]
     assert nama.resolved is None
     assert [d.level for d in diags] == ["warning"]
+
+def test_tepi_kolom_tanpa_qualifier_hanya_melihat_scope_terdalam():
+    script = parse_sql(
+        "SELECT p.id FROM pelanggan p "
+        "WHERE EXISTS (SELECT 1 FROM pesanan o WHERE total > 0)")
+    Resolver().resolve_script(script)
+    total = [c for c in ast.iter_nodes(script)
+             if isinstance(c, ast.ColumnRef) and c.name == "total"][0]
+    assert total.resolved == "pesanan"
