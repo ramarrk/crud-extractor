@@ -64,3 +64,9 @@ def test_regresi_update_subquery_dibaca_bukan_diubah():
         "UPDATE a SET x = (SELECT MAX(y) FROM b) WHERE id IN (SELECT id FROM c)")
     assert analyze_statement(script.statements[0]) == {
         "a": {"U"}, "b": {"R"}, "c": {"R"}}
+
+def test_regresi_presedensi_and_lebih_tinggi_dari_or():
+    script = parse_sql("SELECT 1 FROM t WHERE a = 1 OR b = 2 AND c = 3")
+    where = script.statements[0].where
+    assert where.op == "OR"
+    assert where.right.op == "AND"
