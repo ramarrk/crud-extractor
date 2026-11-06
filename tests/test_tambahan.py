@@ -31,3 +31,11 @@ def test_regresi_alias_subquery_menutupi_alias_luar():
     Resolver().resolve_script(script)
     cols = [c for c in ast.iter_nodes(script) if isinstance(c, ast.ColumnRef)]
     assert [c.resolved for c in cols] == ["pelanggan", "pelanggan", "pesanan"]
+
+def test_regresi_alias_delete_tidak_bocor_ke_statement_berikutnya():
+    script = parse_sql("DELETE FROM sesi s WHERE s.a = 1; SELECT s.id FROM pengguna u")
+    r = Resolver()
+    diags = r.resolve_script(script)
+    assert r.scope is None
+    assert [d.level for d in diags] == ["error"]
+    assert "'s'" in diags[0].message
