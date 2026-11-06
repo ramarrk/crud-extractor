@@ -76,3 +76,8 @@ def test_regresi_recovery_lanjut_ke_statement_berikutnya():
         "SELECT FROM a; DELETE FROM b; SELECT FROM c; UPDATE d SET x = 1")
     assert len(script.errors) == 2
     assert [type(s).__name__ for s in script.statements] == ["Delete", "Update"]
+
+def test_regresi_left_outer_join_diterima():
+    script = parse_sql("SELECT a.id FROM a LEFT OUTER JOIN b ON b.a_id = a.id")
+    assert script.errors == []
+    assert script.statements[0].joins[0].kind == "LEFT"
