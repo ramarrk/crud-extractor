@@ -70,3 +70,9 @@ def test_regresi_presedensi_and_lebih_tinggi_dari_or():
     where = script.statements[0].where
     assert where.op == "OR"
     assert where.right.op == "AND"
+
+def test_regresi_recovery_lanjut_ke_statement_berikutnya():
+    script = parse_sql(
+        "SELECT FROM a; DELETE FROM b; SELECT FROM c; UPDATE d SET x = 1")
+    assert len(script.errors) == 2
+    assert [type(s).__name__ for s in script.statements] == ["Delete", "Update"]
