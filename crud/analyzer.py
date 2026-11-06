@@ -74,28 +74,44 @@ def _collect(expr, usage, op: str) -> None:
             _collect(arg, usage, op)
 
 
+def _is_resolved_column(col: ast.ColumnRef) -> bool:
+    return bool(col.resolved) and not col.resolved.startswith("<")
+
+
+def _collect_column_reads(node, result) -> None:
+    for n in ast.iter_nodes(node):
+        if isinstance(n, ast.ColumnRef) and _is_resolved_column(n):
+            result.add((n.resolved, n.name, "R"))
+
+
+def _collect_update_columns(stmt, result) -> None:
+    for assignment in stmt.assignments:
+        col = assignment.column
+        if _is_resolved_column(col):
+            result.add((col.resolved, col.name, "U"))
+        _collect_column_reads(assignment.value, result)
+
+    _collect_column_reads(stmt.where, result)
+
+
+def _collect_insert_columns(stmt, result) -> None:
+    for name in stmt.columns:
+        result.add((stmt.table.name, name, "C"))
+
+    _collect_column_reads(stmt.values, result)
+    _collect_column_reads(stmt.query, result)
+
+
 def column_usage(stmt) -> set[tuple[str, str, str]]:
     """Penggunaan kolom (tabel, kolom, operasi). Membutuhkan resolver sudah
     dijalankan, karena memakai ColumnRef.resolved."""
     result: set[tuple[str, str, str]] = set()
 
-    def reads(node) -> None:
-        for n in ast.iter_nodes(node):
-            if isinstance(n, ast.ColumnRef) and n.resolved and not n.resolved.startswith("<"):
-                result.add((n.resolved, n.name, "R"))
-
     if isinstance(stmt, ast.Update):
-        for assignment in stmt.assignments:
-            col = assignment.column
-            if col.resolved and not col.resolved.startswith("<"):
-                result.add((col.resolved, col.name, "U"))
-            reads(assignment.value)
-        reads(stmt.where)
+        _collect_update_columns(stmt, result)
     elif isinstance(stmt, ast.Insert):
-        for name in stmt.columns:
-            result.add((stmt.table.name, name, "C"))
-        reads(stmt.values)
-        reads(stmt.query)
+        _collect_insert_columns(stmt, result)
     else:
-        reads(stmt)
+        _collect_column_reads(stmt, result)
+
     return result
