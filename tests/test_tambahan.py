@@ -16,4 +16,8 @@ def test_regresi_operator_tidak_sama_satu_token():
 
 def test_regresi_kutip_ganda_dalam_string():
     toks = tokenize("'Rif''q'")
-    assert [(t.type, t.value) for t in toks[:-1]] == [(T.STRING, "Rif''q")]
+    assert [(t.type, t.value) for t in toks[:-1]] == [(T.STRING, "Rif'q")]
+
+def test_regresi_keyword_campuran_huruf():
+    toks = tokenize("select Select SELECT")
+    assert all(t.type == T.KEYWORD and t.value == "SELECT" for t in toks[:3])
