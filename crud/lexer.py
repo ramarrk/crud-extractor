@@ -96,25 +96,29 @@ class Lexer:
         self.tokens.append(Token(type_, value, line, col))
 
     # ---- pemindaian -----------------------------------------------------
-    def _scan_token(self) -> None:
-        line, col = self.line, self.col
-        ch = self._advance()
-
-        if ch in " \t\r\n":
-            return
+    def _scan_comment(self, ch: str, line: int, col: int) -> bool:
         if ch == "-" and self._peek() == "-":
             while not self._at_end() and self._peek() != "\n":
                 self._advance()
-            return
+            return True
+
         if ch == "/" and self._peek() == "*":
             # TODO(T3): dukung komentar blok /* ... */ (SPESIFIKASI.md bagian 2.3).
             raise LexError("komentar blok belum didukung", line, col)
+
+        return False
+
+    def _scan_single(self, ch: str, line: int, col: int) -> bool:
         if ch in _SINGLE:
             self._add(_SINGLE[ch], ch, line, col)
-            return
+            return True
+        return False
+
+    def _scan_operator(self, ch: str, line: int, col: int) -> bool:
         if ch in "+-/=":
             self._add(TokenType.OP, ch, line, col)
-            return
+            return True
+
         if ch == "<":
             if self._match("="):
                 op = "<="
@@ -123,36 +127,70 @@ class Lexer:
             else:
                 op = "<"
             self._add(TokenType.OP, op, line, col)
-            return
+            return True
+
         if ch == ">":
             op = ">=" if self._match("=") else ">"
             self._add(TokenType.OP, op, line, col)
-            return
+            return True
+
         if ch == "!":
             if self._match("="):
                 self._add(TokenType.OP, "!=", line, col)
-                return
+                return True
             raise LexError("karakter '!' harus diikuti '='", line, col)
+
+        return False
+
+    def _scan_parameter(self, ch: str, line: int, col: int) -> bool:
+        if ch == "?":
+            self._add(TokenType.PARAM, "?", line, col)
+            return True
+
+        if ch != ":":
+            return False
+
+        if not (self._peek().isalpha() or self._peek() == "_"):
+            raise LexError("parameter ':' harus diikuti nama", line, col)
+
+        start = self.pos
+        while self._peek().isalnum() or self._peek() == "_":
+            self._advance()
+
+        self._add(TokenType.PARAM, ":" + self.src[start:self.pos], line, col)
+        return True
+
+    def _scan_token(self) -> None:
+        line, col = self.line, self.col
+        ch = self._advance()
+
+        if ch in " \t\r\n":
+            return
+
+        if self._scan_comment(ch, line, col):
+            return
+
+        if self._scan_single(ch, line, col):
+            return
+
+        if self._scan_operator(ch, line, col):
+            return
+
         if ch == "'":
             self._string(line, col)
             return
-        if ch == "?":
-            self._add(TokenType.PARAM, "?", line, col)
+
+        if self._scan_parameter(ch, line, col):
             return
-        if ch == ":":
-            if self._peek().isalpha() or self._peek() == "_":
-                start = self.pos
-                while self._peek().isalnum() or self._peek() == "_":
-                    self._advance()
-                self._add(TokenType.PARAM, ":" + self.src[start:self.pos], line, col)
-                return
-            raise LexError("parameter ':' harus diikuti nama", line, col)
+
         if ch.isdigit():
             self._number(line, col)
             return
+
         if ch.isalpha() or ch == "_":
             self._word(line, col)
             return
+
         raise LexError(f"karakter tidak dikenal {ch!r}", line, col)
 
     def _string(self, line: int, col: int) -> None:
