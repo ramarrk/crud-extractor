@@ -11,6 +11,7 @@ from crud.lexer import tokenize, LexError, TokenType as T
 from crud.resolver import Resolver
 from crud.parser import parse_sql
 from crud import ast_nodes as ast
+from crud.analyzer import analyze_statement
 
 
 def test_regresi_operator_tidak_sama_satu_token():
@@ -57,3 +58,9 @@ def test_tepi_kolom_tanpa_qualifier_hanya_melihat_scope_terdalam():
     total = [c for c in ast.iter_nodes(script)
              if isinstance(c, ast.ColumnRef) and c.name == "total"][0]
     assert total.resolved == "pesanan"
+
+def test_regresi_update_subquery_dibaca_bukan_diubah():
+    script = parse_sql(
+        "UPDATE a SET x = (SELECT MAX(y) FROM b) WHERE id IN (SELECT id FROM c)")
+    assert analyze_statement(script.statements[0]) == {
+        "a": {"U"}, "b": {"R"}, "c": {"R"}}
