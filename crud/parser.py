@@ -212,7 +212,7 @@ class Parser:
         if self._check_kw("SELECT"):
             # TODO(T1): dukung INSERT INTO ... SELECT ... (SPESIFIKASI.md bagian 3 dan 5).
             query = self._select()
-            return ast.Insert(table, columns, None, query, line=start.line)
+            return ast.Insert(table, columns, [], query, line=start.line)
 
         raise ParseError("diharapkan VALUES atau SELECT", self._peek())
 
