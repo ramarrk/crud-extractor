@@ -91,6 +91,9 @@ class Parser:
         # Panic mode (Crafting Interpreters bab 6): buang token sampai
         # titik aman, lalu lanjutkan parsing.
         while not self._at_end():
+            if self._peek().type == T.SEMICOLON:
+                self._advance()
+                return
             self._advance()
 
     def _statement(self):
@@ -247,10 +250,6 @@ class Parser:
         return ast.Delete(table, where, line=start.line)
 
     # ---- ekspresi (dari presedensi terendah ke tertinggi) ---------------
-    def _expr(self):
-        return self._logical()
-
-# ---- ekspresi (dari presedensi terendah ke tertinggi) ---------------
     def _expr(self):
         return self._or()
 

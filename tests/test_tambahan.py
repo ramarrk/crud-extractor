@@ -119,11 +119,13 @@ def test_regresi_kolom_derived_table_analyzer():
     cols = column_usage(script.statements[0])
     assert cols == {('pelanggan', 'nama', 'R')}
 
-def test_parser_error_statement():
+def test_parser_error_recovery_statement():
     script = parse_sql("SELECT FROM; SELECT * FROM produk;")
 
     assert len(script.errors) > 0
-    assert len(script.statements) == 0
+    assert len(script.statements) == 1
+    assert isinstance(script.statements[0], ast.Select)
+    assert script.statements[0].sources[0].name == "produk"
 
 def test_parser_expression_perbandingan():
     script = parse_sql("SELECT * FROM produk WHERE harga BETWEEN 1000 AND 5000 AND diskon IS NOT NULL;")
@@ -153,6 +155,17 @@ def test_parser_presedensi_and_or():
     assert stmt.where.op == "OR"
     assert isinstance(stmt.where.right, ast.BinaryOp)
     assert stmt.where.right.op == "AND"
+
+def test_parser_presedensi_not_dan_and():
+    script = parse_sql("SELECT * FROM t WHERE NOT a = 1 AND b = 2;")
+    assert script.errors == []
+    stmt = script.statements[0]
+    
+    assert isinstance(stmt.where, ast.BinaryOp)
+    assert stmt.where.op == "AND"
+    # Sisi kiri dari AND harus UnaryOp NOT
+    assert isinstance(stmt.where.left, ast.UnaryOp)
+    assert stmt.where.left.op == "NOT"
 
 def test_resolver_scope_push_pop_delete():
     script = parse_sql("DELETE FROM sesi s WHERE s.id = 1; SELECT s.id FROM pengguna u;")
@@ -190,3 +203,25 @@ def test_parser_left_join():
     assert script.errors == []
     assert len(script.statements[0].joins) == 1
     assert script.statements[0].joins[0].kind == "LEFT"
+
+def test_parser_between_dengan_operator_logika_luar():
+    script = parse_sql("SELECT * FROM p WHERE harga BETWEEN 1000 AND 5000 OR diskon = 10;")
+    assert script.errors == []
+    stmt = script.statements[0]
+    
+    assert isinstance(stmt.where, ast.BinaryOp)
+    assert stmt.where.op == "OR"
+    # Sisi kiri dari OR adalah ekspresi Between
+    assert isinstance(stmt.where.left, ast.Between)
+    assert stmt.where.left.low.value == "1000"
+    assert stmt.where.left.high.value == "5000"
+
+
+def test_resolver_skema_berbeda_tanpa_alias_duplikat_error():
+    script = parse_sql("SELECT * FROM pelanggan JOIN pelanggan ON pelanggan.id = pelanggan.id;")
+    r = Resolver()
+    diags = r.resolve_script(script)
+    
+    errors = [d for d in diags if d.level == "error"]
+    assert len(errors) > 0
+    assert any("dideklarasikan dua kali" in e.message.lower() for e in errors)
