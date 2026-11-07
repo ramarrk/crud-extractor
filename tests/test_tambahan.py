@@ -11,7 +11,8 @@ from crud.lexer import tokenize, LexError, TokenType as T
 from crud.resolver import Resolver
 from crud.parser import parse_sql
 from crud import ast_nodes as ast
-from crud.analyzer import column_usage
+from crud.analyzer import column_usage, analyze_statement
+
 
 
 def test_regresi_operator_tidak_sama_satu_token():
@@ -225,3 +226,9 @@ def test_resolver_skema_berbeda_tanpa_alias_duplikat_error():
     errors = [d for d in diags if d.level == "error"]
     assert len(errors) > 0
     assert any("dideklarasikan dua kali" in e.message.lower() for e in errors)
+
+def test_regresi_update_subquery_dibaca_bukan_diubah():
+    script = parse_sql(
+        "UPDATE a SET x = (SELECT MAX(y) FROM b) WHERE id IN (SELECT id FROM c)")
+    assert analyze_statement(script.statements[0]) == {
+        "a": {"U"}, "b": {"R"}, "c": {"R"}}
