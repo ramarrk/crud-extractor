@@ -77,3 +77,12 @@ def test_tepi_kolom_tanpa_qualifier_hanya_melihat_scope_terdalam():
     assert len(total) == 1
     assert diags == []
     assert total[0].resolved == "pesanan"
+
+def test_tepi_penanda_komentar_di_dalam_string_bukan_komentar():
+    # Isi string yang menyerupai komentar tidak boleh dibaca sebagai komentar.
+    toks = tokenize("'a -- b' '/* x */'")
+
+    assert [(t.type, t.value) for t in toks[:-1]] == [
+        (T.STRING, "a -- b"),
+        (T.STRING, "/* x */"),
+    ]
