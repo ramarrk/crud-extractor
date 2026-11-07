@@ -25,8 +25,9 @@ Cara ini menggunakan konsep lookahead dalam proses scanning yang dibahas di Bab 
 
 **Test regresi.** test_regresi_operator_tidak_sama_satu_token — memeriksa token dari a <> 1 agar nilainya menjadi a, <>, dan 1.
 
-**Peran AI.** Apakah AI membantu menemukan atau memperbaiki bug ini? Bagaimana kalian
-memverifikasinya?
+**Peran AI.** Ketidaksesuaian ini saya temukan ketika memeriksa penanganan operator pada lexer dan mencocokkannya dengan SPESIFIKASI.md bagian 2.5. Saya kemudian meminta AI mengonfirmasi apakah operator <> belum dapat dikenali sebagai satu token karena belum memiliki aturan khusus, serta apakah hal tersebut berbeda dengan operator !=. AI mengonfirmasi bahwa != sudah memiliki aturan eksplisit, sedangkan <> belum, sehingga belum sesuai dengan prinsip maximal munch. Hasil perbaikan diverifikasi menggunakan test regresi yang gagal sebelum perbaikan dan lulus sesudahnya.
+
+
 
 ---
 
@@ -50,8 +51,7 @@ Alternatif yang dipertimbangkan adalah membaca isi string sampai kutip pertama y
 
 **Test regresi.** test_regresi_kutip_ganda_dalam_string. Test ini memeriksa bahwa 'Rif''q' menghasilkan satu token STRING bernilai Rif'q.
 
-**Peran AI.** Apakah AI membantu menemukan atau memperbaiki bug ini? Bagaimana kalian
-memverifikasinya?
+**Peran AI.** Setelah menemukan masalah pada penanganan tanda kutip di dalam string, saya menggunakan contoh 'Rif''q' untuk menguji perilaku lexer. Saya juga menanyakan kepada AI apakah nama yang mengandung titik, seperti Alif M. Kakak, atau tanda hubung, seperti Arif F-sa, perlu diuji sebagai bagian dari kasus ini. AI mengonfirmasi bahwa titik dan tanda hubung tidak berkaitan dengan masalah yang ditemukan karena bug terletak pada penanganan tanda kutip tunggal. Contoh nama tersebut, bersama contoh Rif'q, kemudian dijalankan untuk memeriksa perilaku lexer. Test regresi dibuat menggunakan contoh yang secara khusus mengandung tanda kutip dan diverifikasi gagal sebelum perbaikan serta lulus sesudahnya.
 
 ---
 
@@ -75,8 +75,7 @@ Ada dua alternatif yang dipertimbangkan. Alternatif pertama adalah menambahkan v
 
 **Test regresi.** test_regresi_keyword_campuran_huruf. Test ini memeriksa bahwa select Select SELECT menghasilkan tiga token bertipe KEYWORD dengan nilai SELECT.
 
-**Peran AI.** Apakah AI membantu menemukan atau memperbaiki bug ini? Bagaimana kalian
-memverifikasinya?
+**Peran AI.** Bug ini saya temukan ketika test dosen test_keyword_huruf_kecil gagal. Saya kemudian memeriksa fungsi _word() dan mencocokkan proses pencocokan keyword dengan SPESIFIKASI.md bagian 2.2. Dari pemeriksaan tersebut, saya menemukan bahwa pencocokan keyword masih membedakan huruf besar dan kecil, sedangkan aturan SQL tidak demikian. Saya menggunakan AI untuk mengonfirmasi apakah hal tersebut memang menjadi penyebab kegagalan test. Setelah analisis dikonfirmasi, perbaikan dilakukan dengan menormalisasi teks sebelum dicocokkan dengan KEYWORDS. Hasilnya diverifikasi menggunakan test regresi dengan bentuk campuran huruf (Select), serta memastikan kata selection dan fromage tetap dikenali sebagai IDENT.
 
 ---
 
@@ -100,8 +99,7 @@ Alternatif yang dipertimbangkan adalah mempertahankan list chain dan hanya mengh
 
 **Test regresi.** test_regresi_alias_subquery_menutupi_alias_luar. Test ini memeriksa bahwa hasil resolusi ketiga p.id berturut-turut adalah pelanggan, pelanggan, dan pesanan.
 
-**Peran AI.** Apakah AI membantu menemukan atau memperbaiki bug ini? Bagaimana kalian
-memverifikasinya?
+**Peran AI.** Saya memahami bahwa scope pada query SQL yang bersarang dapat memiliki alias tabel dengan nama yang sama, sehingga perlu ada aturan untuk menentukan alias mana yang digunakan. Untuk memastikan pemahaman tersebut, saya meminta AI mengonfirmasi apakah kondisi ini dapat dianalogikan dengan nested if pada pemrograman. AI membenarkan bahwa alias pada subquery dapat menggunakan nama yang sama dengan alias pada query luar, tetapi keduanya merujuk ke tabel yang berbeda sesuai scope masing-masing. Pengujian regresi kemudian dibuat menggunakan contoh SQL sendiri dengan alias p pada tabel pelanggan di query luar dan tabel pesanan di subquery. Hasilnya diperiksa sebelum dan sesudah perbaikan, dari ketiga referensi p.id yang awalnya terhubung ke pelanggan menjadi pelanggan, pelanggan, dan pesanan.
 
 ---
 
@@ -126,7 +124,6 @@ Alternatif yang dipertimbangkan adalah mengosongkan scope di resolve_script() se
 
 **Test regresi.** test_regresi_alias_delete_tidak_bocor_ke_statement_berikutnya. Test ini memeriksa bahwa setelah dua statement selesai tidak ada scope tersisa, bahwa diagnostik yang muncul hanya satu dengan level error, dan bahwa pesannya menyebut alias s.
 
-**Peran AI.** Apakah AI membantu menemukan atau memperbaiki bug ini? Bagaimana kalian
-memverifikasinya?
+**Peran AI.** Setelah menemukan bahwa fungsi _delete() tidak menutup scope yang sebelumnya dibuka, saya menanyakan kepada AI maksud dari kondisi DELETE tidak melakukan pop dan apakah masalah tersebut berkaitan dengan shadowing. AI menjelaskan bahwa keduanya merupakan masalah yang berbeda: shadowing berkaitan dengan urutan pencarian alias pada scope, sedangkan bug pada DELETE terjadi karena scope tidak ditutup setelah proses resolusi selesai. Penjelasan tersebut membantu memperjelas perbedaan kedua masalah. Hasil perbaikan diverifikasi menggunakan test regresi yang memeriksa bahwa Resolver.scope kembali kosong, hanya satu error muncul, dan pesan diagnostiknya menyebut alias s.
 
 ---
