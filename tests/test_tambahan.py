@@ -39,3 +39,50 @@ def test_regresi_alias_delete_tidak_bocor_ke_statement_berikutnya():
     assert r.scope is None
     assert [d.level for d in diags] == ["error"]
     assert "'s'" in diags[0].message
+
+def test_tepi_kolom_tanpa_qualifier_dua_tabel_ambigu():
+    # Kolom tanpa qualifier berisiko dianggap berasal dari tabel yang salah ketika ada beberapa tabel.
+    script = parse_sql(
+        "SELECT nama FROM pelanggan p JOIN pesanan o ON o.pelanggan_id = p.id"
+    )
+    assert script.errors == []
+
+    diags = Resolver().resolve_script(script)
+    nama = [
+        c for c in ast.iter_nodes(script)
+        if isinstance(c, ast.ColumnRef) and c.name == "nama"
+    ]
+
+    assert len(nama) == 1
+    assert nama[0].resolved is None
+    assert len(diags) == 1
+    assert diags[0].level == "warning"
+    assert "ambigu" in diags[0].message.lower()
+
+def test_tepi_kolom_tanpa_qualifier_hanya_melihat_scope_terdalam():
+    # Kolom dalam subquery berisiko salah dihubungkan ke tabel milik query luar.
+    script = parse_sql(
+        "SELECT p.id FROM pelanggan p "
+        "WHERE EXISTS (SELECT 1 FROM pesanan o WHERE total > 0)"
+    )
+    assert script.errors == []
+
+    diags = Resolver().resolve_script(script)
+
+    total = [
+        c for c in ast.iter_nodes(script)
+        if isinstance(c, ast.ColumnRef) and c.name == "total"
+    ]
+
+    assert len(total) == 1
+    assert diags == []
+    assert total[0].resolved == "pesanan"
+
+def test_tepi_penanda_komentar_di_dalam_string_bukan_komentar():
+    # Isi string yang menyerupai komentar tidak boleh dibaca sebagai komentar.
+    toks = tokenize("'a -- b' '/* x */'")
+
+    assert [(t.type, t.value) for t in toks[:-1]] == [
+        (T.STRING, "a -- b"),
+        (T.STRING, "/* x */"),
+    ]
