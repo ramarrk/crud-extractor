@@ -109,7 +109,7 @@ def test_regresi_kolom_tanpa_qualifier_derived_table():
     script = parse_sql("SELECT nama FROM (SELECT nama, id FROM pelanggan) AS sub")
     Resolver().resolve_script(script)
     cols = [c for c in ast.iter_nodes(script) if isinstance(c, ast.ColumnRef)]
-    assert [c.resolved for c in cols] == [None, "pelanggan", "pelanggan"]
+    assert [c.resolved for c in cols] == ["<subquery sub>", "pelanggan", "pelanggan"]
 
 def test_regresi_kolom_derived_table_analyzer():
     script, diags = parse_sql("SELECT sub.nama FROM (SELECT nama FROM pelanggan) AS sub"), []
@@ -135,3 +135,58 @@ def test_parser_expression_perbandingan():
     where_str = str(stmt.where).upper()
     assert "ISNULL" in where_str
     assert "NEGATED=TRUE" in where_str
+
+def test_resolver_derived_table_kolom_tanpa_qualifier():
+    script = parse_sql("SELECT nama FROM (SELECT nama, id FROM pelanggan) AS sub")
+    Resolver().resolve_script(script)
+    
+    cols = [c for c in ast.iter_nodes(script) if isinstance(c, ast.ColumnRef)]
+    kolom_terluar = cols[0]
+    
+    assert kolom_terluar.resolved == "<subquery sub>"
+
+def test_parser_presedensi_and_or():
+    script = parse_sql("SELECT * FROM produk WHERE a = 1 OR b = 2 AND c = 3;")
+    stmt = script.statements[0]
+    
+    assert isinstance(stmt.where, ast.BinaryOp)
+    assert stmt.where.op == "OR"
+    assert isinstance(stmt.where.right, ast.BinaryOp)
+    assert stmt.where.right.op == "AND"
+
+def test_resolver_scope_push_pop_delete():
+    script = parse_sql("DELETE FROM sesi s WHERE s.id = 1; SELECT s.id FROM pengguna u;")
+    r = Resolver()
+    diags = r.resolve_script(script)
+    
+    assert r.scope is None
+    assert any("s" in d.message for d in diags)
+
+def test_parser_multiple_joins():
+    sql = """SELECT p.nama, o.id, d.produk_id FROM pelanggan p 
+        LEFT JOIN pesanan o ON o.pelanggan_id = p.id 
+        INNER JOIN detail_pesanan d ON d.pesanan_id = o.id;
+    """
+    script = parse_sql(sql)
+    assert script.errors == []
+    joins = script.statements[0].joins
+    
+    assert len(joins) == 2
+    assert joins[0].kind == "LEFT"
+    assert joins[1].kind == "INNER"
+
+def test_parser_inner_join():
+    script1 = parse_sql("SELECT * FROM pelanggan INNER JOIN pesanan ON pesanan.pelanggan_id = pelanggan.id;")
+    assert script1.errors == []
+    assert len(script1.statements[0].joins) == 1
+    assert script1.statements[0].joins[0].kind == "INNER"
+
+    script2 = parse_sql("SELECT * FROM a JOIN b ON a.id = b.a_id;")
+    assert script2.errors == []
+    assert script2.statements[0].joins[0].kind == "INNER"
+
+def test_parser_left_join():
+    script = parse_sql("SELECT p.nama, o.total FROM pelanggan p LEFT JOIN pesanan o ON o.pelanggan_id = p.id;")
+    assert script.errors == []
+    assert len(script.statements[0].joins) == 1
+    assert script.statements[0].joins[0].kind == "LEFT"

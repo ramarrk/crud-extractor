@@ -250,11 +250,21 @@ class Parser:
     def _expr(self):
         return self._logical()
 
-    def _logical(self):
-        # OR dan AND: operator logika biner, asosiatif kiri.
+# ---- ekspresi (dari presedensi terendah ke tertinggi) ---------------
+    def _expr(self):
+        return self._or()
+
+    def _or(self):
+        left = self._and()
+        while self._match_kw("OR"):
+            op = "OR"
+            left = ast.BinaryOp(left, op, self._and())
+        return left
+
+    def _and(self):
         left = self._not()
-        while self._check_kw("AND", "OR"):
-            op = self._advance().value
+        while self._match_kw("AND"):
+            op = "AND"
             left = ast.BinaryOp(left, op, self._not())
         return left
 
