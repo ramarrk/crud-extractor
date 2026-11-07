@@ -181,6 +181,8 @@ Ada dua alternatif yang dipertimbangkan. Alternatif pertama adalah menerima OUTE
 
 ---
 
+---
+
 ## Bug 8: Resolusi kolom tanpa qualifier pada derived table menghasilkan nilai None
 
 **Ditemukan oleh:** Julfi al Fikri Abdillah · Diperbaiki oleh: Julfi al Fikri Abdillah
@@ -201,6 +203,10 @@ SELECT nama FROM (SELECT nama, id FROM pelanggan) AS sub;
 
 **Peran AI.** AI membantu mengidentifikasi dan merumuskan perbaikan bug terkait resolusi kolom tanpa qualifier pada derived table ketika ditemukan bahwa kolom dari subquery di klausa FROM menghasilkan nilai None. Saya berdiskusi dengan AI mengenai bagaimana struktur entri scope virtual disimpan pada Resolver, lalu AI memberikan saran implementasi fungsi pembantu _target_of() agar format string virtual <subquery alias> dapat dikenali dengan benar. Perbaikan tersebut kemudian diverifikasi menggunakan unit test regresi dan dipastikan lulus.
 
+--- 
+  
+---  
+  
 ## Bug 9: Kesalahan Penanganan Presedensi Operator Logika AND dan OR (Digabungkan dalam Satu Loop)
 
 **Ditemukan oleh:** Julfi al Fikri Abdillah · Diperbaiki oleh: Julfi al Fikri Abdillah
