@@ -180,3 +180,49 @@ Ada dua alternatif yang dipertimbangkan. Alternatif pertama adalah menerima OUTE
 **Peran AI.** AI membantu menemukan bug ini ketika membandingkan grammar join pada SPESIFIKASI.md bagian 3 dengan implementasi fungsi _join() pada parser. AI menunjukkan bahwa grammar memperbolehkan penggunaan OUTER setelah LEFT, tetapi parser sebelumnya langsung mengharapkan JOIN setelah menemukan LEFT. Setelah memeriksa bagian tersebut, saya memahami bahwa parser belum menangani OUTER sebagai bagian opsional dari grammar. Saya kemudian menerapkan pengecekan OUTER pada cabang LEFT agar LEFT JOIN dan LEFT OUTER JOIN sama-sama dapat diterima, tanpa membuat INNER OUTER JOIN ikut diterima. Hasil perbaikan diverifikasi menggunakan test regresi yang gagal sebelum perbaikan dan lulus sesudahnya.
 
 ---
+
+---
+
+## Bug 8: Resolusi kolom tanpa qualifier pada derived table menghasilkan nilai None
+
+**Ditemukan oleh:** Julfi al Fikri Abdillah · Diperbaiki oleh: Julfi al Fikri Abdillah
+
+**Gejala.** Menurut spesifikasi, kolom tanpa qualifier yang merujuk ke tabel virtual dari derived table (subquery di FROM yang memiliki alias) harus di-resolve ke nama alias subquery tersebut (misalnya "<subquery sub>"). Sebelumnya, resolver mengembalikan nilai None untuk kolom tanpa qualifier pada derived table, sehingga analyzer gagal mendeteksi penggunaan kolom tersebut secara akurat.
+
+**Reproduksi minimal.** SQL terpendek yang memicu bug:
+
+```sql
+SELECT nama FROM (SELECT nama, id FROM pelanggan) AS sub;
+```
+
+**Akar masalah.** Akar masalahnya ada pada fungsi _column() di modul resolver.py. Ketika mengevaluasi kolom tanpa qualifier, pengecekan lingkup scope hanya memeriksa tabel fisik biasa dan belum menangani string format penamaan khusus virtual (derived table) yang menggunakan format pembungkus <subquery alias>, sehingga kolom dari subquery dianggap tidak teretensi ke target yang benar.
+
+**Perbaikan.** Perbaikannya dilakukan di file crud/resolver.py, dengan menambahkan fungsi pembantu _target_of() serta menyesuaikan penanganan resolusi pada _column() agar mengenali entri subquery bertipe virtual di dalam scope entries, sehingga col.resolved terisi string <subquery alias> dengan benar.
+
+**Test regresi.** test_resolver_derived_table_kolom_tanpa_qualifier.
+
+**Peran AI.** AI membantu mengidentifikasi dan merumuskan perbaikan bug terkait resolusi kolom tanpa qualifier pada derived table ketika ditemukan bahwa kolom dari subquery di klausa FROM menghasilkan nilai None. Saya berdiskusi dengan AI mengenai bagaimana struktur entri scope virtual disimpan pada Resolver, lalu AI memberikan saran implementasi fungsi pembantu _target_of() agar format string virtual <subquery alias> dapat dikenali dengan benar. Perbaikan tersebut kemudian diverifikasi menggunakan unit test regresi dan dipastikan lulus.
+
+--- 
+  
+---  
+  
+## Bug 9: Kesalahan Penanganan Presedensi Operator Logika AND dan OR (Digabungkan dalam Satu Loop)
+
+**Ditemukan oleh:** Julfi al Fikri Abdillah · Diperbaiki oleh: Julfi al Fikri Abdillah
+
+**Gejala.** Berdasarkan spesifikasi, operator OR berada pada tingkat presedensi 1 (terendah) dan AND pada tingkat 2, yang berarti AND harus dievaluasi lebih dahulu dibandingkan OR. Pada implementasi awal parser, logika pemrosesan AND dan OR digabung ke dalam satu perulangan linier yang sama. Akibatnya, ekspresi seperti a = 1 OR b = 2 AND c = 3 dibaca keliru dari kiri ke kanan menjadi (a = 1 OR b = 2) AND c = 3, sehingga prioritas evaluasi logika menjadi salah.
+
+**Reproduksi minimal.** SQL terpendek yang memicu bug:
+
+```sql
+SELECT * FROM produk WHERE a = 1 OR b = 2 AND c = 3;
+```
+
+**Akar masalah.** Akar masalahnya terletak pada struktur fungsi recursive descent di modul parser. Dalam buku Crafting Interpreters Bab 6, tata bahasa yang memiliki tingkat prioritas berbeda harus dipisahkan ke dalam fungsi atau lapisan aturan turunan yang berbeda. Menggabungkan AND dan OR dalam satu tingkat perulangan menghilangkan efek hierarki prioritas, sehingga asosiatif dan presedensi operator gagal dijaga.
+
+**Perbaikan.** Perbaikan dilakukan di file parser dengan memecah fungsi ekspresi logika menjadi hierarki bertingkat yang terpisah secara tegas, yaitu _or() memanggil _or_expr dan _and() memanggil _and_expr. Dengan pemisahan fungsi ini, operator yang ikatannya lebih lemah (OR) berada di lapisan luar, memastikan AND dikelompokkan dan dievaluasi terlebih dahulu.
+
+**Test regresi.** test_parser_presedensi_and_or.
+
+**Peran AI.** AI membantu mengidentifikasi akar permasalahan mengapa ekspresi logika berantai AND dan OR dievaluasi keliru akibat digabung ke dalam satu perulangan linier yang sama. AI menjelaskan lebih dalam mengenai konsep pemisahan fungsi recursive descent bertingkat per tingkat prioritas operator berdasarkan buku Crafting Interpreters Bab 6, serta membantu memvalidasi aturan hierarki presedensi sesuai dengan SPESIFIKASI.md bagian 3.1. Perbaikan kemudian diuji dan diverifikasi menggunakan unit test regresi
