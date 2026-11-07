@@ -188,8 +188,8 @@ class Resolver:
             
             if jumlah_tabel == 1:
                 entry = entries[0]
-                col.resolved = entry.table
+                col.resolved = _target_of(entry)
             elif jumlah_tabel > 1:
-                self._warning(f"Kolom '{col.name}' ambigu tanpa skema", col.line)
+                self._warning(f"kolom '{col.name}' ambigu tanpa skema", col.line)
             else:
-                self._warning(f"Kolom '{col.name}' tidak memiliki tabel", col.line)
+                self._warning(f"kolom '{col.name}' tidak memiliki tabel", col.line)
