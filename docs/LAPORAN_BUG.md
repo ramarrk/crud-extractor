@@ -127,3 +127,76 @@ Alternatif yang dipertimbangkan adalah mengosongkan scope di resolve_script() se
 **Peran AI.** Setelah menemukan bahwa fungsi _delete() tidak menutup scope yang sebelumnya dibuka, saya menanyakan kepada AI maksud dari kondisi DELETE tidak melakukan pop dan apakah masalah tersebut berkaitan dengan shadowing. AI menjelaskan bahwa keduanya merupakan masalah yang berbeda: shadowing berkaitan dengan urutan pencarian alias pada scope, sedangkan bug pada DELETE terjadi karena scope tidak ditutup setelah proses resolusi selesai. Penjelasan tersebut membantu memperjelas perbedaan kedua masalah. Hasil perbaikan diverifikasi menggunakan test regresi yang memeriksa bahwa Resolver.scope kembali kosong, hanya satu error muncul, dan pesan diagnostiknya menyebut alias s.
 
 ---
+
+---
+
+## Bug 6: Subquery di UPDATE dihitung sebagai operasi U
+
+**Ditemukan oleh:** M. Ramadhan Kurniawan · **Diperbaiki oleh:** M. Ramadhan Kurniawan
+
+**Gejala.** Menurut SPESIFIKASI.md bagian 5, pada statement UPDATE hanya tabel target yang berstatus U, sedangkan tabel lain yang muncul lewat subquery, baik di SET maupun di WHERE, berstatus R. Aturan itu berlaku umum: membaca tabel lewat subquery selalu R, apa pun jenis statement luarnya. Analyzer sebelumnya memberi U pada semua tabel di statement UPDATE, termasuk tabel yang hanya dibaca di dalam subquery. Hasilnya, tabel yang tidak pernah diubah tercatat sebagai tabel yang diubah. Dampak ini terlihat pada laporan_penjualan.sql, ketika test_matrix_laporan_penjualan menghasilkan pesanan: RUD padahal seharusnya RD. Bug ini awalnya tertutup oleh kegagalan lain karena file yang sama memuat INSERT ... SELECT yang belum bisa di-parse sebelum T1 selesai.
+
+**Reproduksi minimal.** SQL terpendek yang memicu bug:
+
+```sql
+UPDATE a SET x = 1 WHERE id IN (SELECT id FROM b);
+Hasil sebelum perbaikan: a bernilai U dan b juga bernilai U. Hasil yang diharapkan: a bernilai U dan b bernilai R.
+```
+
+**Akar masalah.** Akar masalahnya ada pada cabang UPDATE di fungsi analyze_statement(). Analyzer bekerja di atas pohon sintaks (AST), yaitu representasi program sebagai pohon node yang dibahas di Bab 5 (Representing Code) buku Crafting Interpreters, dan aturan operasinya diterapkan per jenis node. Fungsi _collect() menerima parameter op yang menentukan operasi apa yang ditempelkan ke setiap tabel di dalam subquery. Pada cabang UPDATE, kedua pemanggilan _collect() untuk ekspresi di SET dan di WHERE meneruskan nilai "U", sehingga seluruh tabel di dalam subquery ikut diberi U. Padahal operasi U hanya berlaku untuk tabel target yang sudah dicatat pada baris pertama cabang tersebut. Cabang DELETE yang letaknya tepat di bawahnya sudah memakai "R", sehingga kesalahan hanya terjadi pada UPDATE.
+
+**Perbaikan.** Perbaikannya dilakukan di file crud/analyzer.py, pada fungsi analyze_statement(), cabang UPDATE. Argumen op pada kedua pemanggilan _collect() diganti dari "U" menjadi "R". Baris usage[stmt.table.name].add("U") tidak diubah karena tabel target memang berstatus U. Dengan begitu, tabel di dalam subquery hanya dibaca dan statement UPDATE menghasilkan U untuk target saja.
+
+Alternatif yang dipertimbangkan adalah membiarkan analyzer seperti semula, lalu menambah langkah sesudahnya yang menghapus operasi U dari semua tabel selain target. Alternatif ini tidak dipilih karena hanya menutupi gejalanya, menambah satu langkah pemrosesan, dan sumber kesalahannya tetap ada di argumen yang diteruskan ke _collect(). Mengganti dua argumen langsung di sumbernya lebih sederhana dan mudah diperiksa.
+
+**Test regresi.** test_regresi_update_subquery_dibaca_bukan_diubah. Test ini memeriksa bahwa hasil analyze_statement() untuk UPDATE dengan subquery di SET dan di WHERE adalah a bernilai U, serta b dan c bernilai R.
+
+**Peran AI.** AI membantu menemukan bug ini ketika memeriksa hasil CRUD matrix pada laporan_penjualan.sql, ketika tabel pesanan mendapatkan status RUD padahal seharusnya RD. AI menunjukkan bahwa kemungkinan masalahnya terdapat pada cabang UPDATE di fungsi analyze_statement(), khususnya pada operasi yang diteruskan melalui _collect(). Setelah memeriksa bagian tersebut, saya menemukan bahwa pemanggilan _collect() untuk ekspresi SET dan WHERE sama-sama menggunakan operasi "U", padahal tabel di dalam subquery hanya seharusnya mendapatkan operasi "R". Perbaikan diterapkan dengan mengubah kedua argumen tersebut, kemudian diverifikasi menggunakan test regresi yang memastikan tabel target mendapatkan U, sedangkan tabel yang digunakan dalam subquery mendapatkan R.
+
+---
+
+---
+
+## Bug 7: LEFT OUTER JOIN ditolak oleh parser
+
+**Ditemukan oleh:** M. Ramadhan Kurniawan · **Diperbaiki oleh:** M. Ramadhan Kurniawan
+
+**Gejala.** Grammar pada SPESIFIKASI.md bagian 3 menyatakan bahwa join memiliki bentuk [ "INNER" | "LEFT" [ "OUTER" ] ] "JOIN", sehingga kata OUTER boleh muncul setelah LEFT. Parser sebelumnya menolak bentuk tersebut dan melaporkan error Baris 1, kolom 25: diharapkan JOIN, ditemukan 'OUTER'. Statement yang valid menurut grammar menjadi gagal di-parse dan tidak ikut dihitung dalam CRUD matrix, sehingga tabel pada statement itu hilang dari hasil.
+
+**Reproduksi minimal.** SQL terpendek yang memicu bug:
+
+```sql
+SELECT a.id FROM a LEFT OUTER JOIN b ON b.a_id = a.id;
+```
+
+**Akar masalah.** Akar masalahnya ada pada fungsi _join() di parser. Di Bab 6 (Parsing Expressions) buku Crafting Interpreters, parser recursive descent dibuat dengan menerjemahkan setiap aturan grammar menjadi kode, dan bagian opsional pada grammar diterjemahkan menjadi pengecekan yang boleh tidak cocok. Pada grammar join, OUTER adalah bagian opsional setelah LEFT, tetapi kode lama langsung menuntut token JOIN setelah mengenali LEFT, sehingga bagian opsional itu tidak pernah diterjemahkan. Kata OUTER sendiri sudah dikenali lexer sebagai KEYWORD, jadi kesalahannya baru terlihat di parser. Test join yang ada sebelumnya hanya memakai LEFT JOIN dan INNER JOIN tanpa OUTER, sehingga bug ini tidak pernah terpicu.
+
+**Perbaikan.** Perbaikannya dilakukan di file crud/parser.py, pada fungsi _join(), dengan menambahkan self._match_kw("OUTER") di dalam cabang LEFT, tepat setelah kind = "LEFT". Fungsi _match_kw() mengonsumsi OUTER apabila ada dan tidak melakukan apa pun apabila tidak ada, sehingga LEFT JOIN biasa tetap diterima. Pengecekan sengaja diletakkan di dalam cabang LEFT agar INNER OUTER JOIN tetap ditolak karena grammar hanya mengizinkan OUTER setelah LEFT.
+
+Ada dua alternatif yang dipertimbangkan. Alternatif pertama adalah menerima OUTER setelah INNER maupun LEFT. Alternatif ini tidak dipilih karena parser menjadi menerima lebih banyak daripada yang diizinkan grammar. Alternatif kedua adalah menyimpan jenis join LEFT OUTER sebagai nilai kind tersendiri. Alternatif ini tidak dipilih karena LEFT JOIN dan LEFT OUTER JOIN bermakna sama sehingga satu nilai LEFT sudah cukup.
+
+**Test regresi.** test_regresi_left_outer_join_diterima. Test ini memeriksa bahwa SELECT a.id FROM a LEFT OUTER JOIN b ON b.a_id = a.id tidak menghasilkan error parse dan bahwa jenis join-nya adalah LEFT.
+
+**Peran AI.** AI membantu menemukan bug ini ketika membandingkan grammar join pada SPESIFIKASI.md bagian 3 dengan implementasi fungsi _join() pada parser. AI menunjukkan bahwa grammar memperbolehkan penggunaan OUTER setelah LEFT, tetapi parser sebelumnya langsung mengharapkan JOIN setelah menemukan LEFT. Setelah memeriksa bagian tersebut, saya memahami bahwa parser belum menangani OUTER sebagai bagian opsional dari grammar. Saya kemudian menerapkan pengecekan OUTER pada cabang LEFT agar LEFT JOIN dan LEFT OUTER JOIN sama-sama dapat diterima, tanpa membuat INNER OUTER JOIN ikut diterima. Hasil perbaikan diverifikasi menggunakan test regresi yang gagal sebelum perbaikan dan lulus sesudahnya.
+
+---
+
+## Bug 8: Resolusi kolom tanpa qualifier pada derived table menghasilkan nilai None
+
+**Ditemukan oleh:** Julfi al Fikri Abdillah · Diperbaiki oleh: Julfi al Fikri Abdillah
+
+**Gejala.** Menurut spesifikasi, kolom tanpa qualifier yang merujuk ke tabel virtual dari derived table (subquery di FROM yang memiliki alias) harus di-resolve ke nama alias subquery tersebut (misalnya "<subquery sub>"). Sebelumnya, resolver mengembalikan nilai None untuk kolom tanpa qualifier pada derived table, sehingga analyzer gagal mendeteksi penggunaan kolom tersebut secara akurat.
+
+**Reproduksi minimal.** SQL terpendek yang memicu bug:
+
+```sql
+SELECT nama FROM (SELECT nama, id FROM pelanggan) AS sub;
+```
+
+**Akar masalah.** Akar masalahnya ada pada fungsi _column() di modul resolver.py. Ketika mengevaluasi kolom tanpa qualifier, pengecekan lingkup scope hanya memeriksa tabel fisik biasa dan belum menangani string format penamaan khusus virtual (derived table) yang menggunakan format pembungkus <subquery alias>, sehingga kolom dari subquery dianggap tidak teretensi ke target yang benar.
+
+**Perbaikan.** Perbaikannya dilakukan di file crud/resolver.py, dengan menambahkan fungsi pembantu _target_of() serta menyesuaikan penanganan resolusi pada _column() agar mengenali entri subquery bertipe virtual di dalam scope entries, sehingga col.resolved terisi string <subquery alias> dengan benar.
+
+**Test regresi.** test_resolver_derived_table_kolom_tanpa_qualifier. Test ini memeriksa bahwa kolom tanpa qualifier pada derived table berhasil di-resolve ke target subquery yang tepat.
+
+**Peran AI.** AI membantu mengidentifikasi dan merumuskan perbaikan bug terkait resolusi kolom tanpa qualifier pada derived table ketika ditemukan bahwa kolom dari subquery di klausa FROM menghasilkan nilai None. Saya berdiskusi dengan AI mengenai bagaimana struktur entri scope virtual disimpan pada Resolver, lalu AI memberikan saran implementasi fungsi pembantu _target_of() agar format string virtual <subquery alias> dapat dikenali dengan benar. Perbaikan tersebut kemudian diverifikasi menggunakan unit test regresi dan dipastikan lulus.
