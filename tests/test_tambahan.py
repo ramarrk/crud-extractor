@@ -39,3 +39,22 @@ def test_regresi_alias_delete_tidak_bocor_ke_statement_berikutnya():
     assert r.scope is None
     assert [d.level for d in diags] == ["error"]
     assert "'s'" in diags[0].message
+
+def test_tepi_kolom_tanpa_qualifier_dua_tabel_ambigu():
+    # Kolom tanpa qualifier berisiko dianggap berasal dari tabel yang salah ketika ada beberapa tabel.
+    script = parse_sql(
+        "SELECT nama FROM pelanggan p JOIN pesanan o ON o.pelanggan_id = p.id"
+    )
+    assert script.errors == []
+
+    diags = Resolver().resolve_script(script)
+    nama = [
+        c for c in ast.iter_nodes(script)
+        if isinstance(c, ast.ColumnRef) and c.name == "nama"
+    ]
+
+    assert len(nama) == 1
+    assert nama[0].resolved is None
+    assert len(diags) == 1
+    assert diags[0].level == "warning"
+    assert "ambigu" in diags[0].message.lower()
