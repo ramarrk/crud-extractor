@@ -58,3 +58,22 @@ def test_tepi_kolom_tanpa_qualifier_dua_tabel_ambigu():
     assert len(diags) == 1
     assert diags[0].level == "warning"
     assert "ambigu" in diags[0].message.lower()
+
+def test_tepi_kolom_tanpa_qualifier_hanya_melihat_scope_terdalam():
+    # Kolom dalam subquery berisiko salah dihubungkan ke tabel milik query luar.
+    script = parse_sql(
+        "SELECT p.id FROM pelanggan p "
+        "WHERE EXISTS (SELECT 1 FROM pesanan o WHERE total > 0)"
+    )
+    assert script.errors == []
+
+    diags = Resolver().resolve_script(script)
+
+    total = [
+        c for c in ast.iter_nodes(script)
+        if isinstance(c, ast.ColumnRef) and c.name == "total"
+    ]
+
+    assert len(total) == 1
+    assert diags == []
+    assert total[0].resolved == "pesanan"
