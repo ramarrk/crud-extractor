@@ -232,3 +232,8 @@ def test_regresi_update_subquery_dibaca_bukan_diubah():
         "UPDATE a SET x = (SELECT MAX(y) FROM b) WHERE id IN (SELECT id FROM c)")
     assert analyze_statement(script.statements[0]) == {
         "a": {"U"}, "b": {"R"}, "c": {"R"}}
+
+def test_regresi_left_outer_join_diterima():
+    script = parse_sql("SELECT a.id FROM a LEFT OUTER JOIN b ON b.a_id = a.id")
+    assert script.errors == []
+    assert script.statements[0].joins[0].kind == "LEFT"
