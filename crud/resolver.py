@@ -139,6 +139,13 @@ class Resolver:
         self._pop()
 
     # ---- ekspresi -------------------------------------------------------
+    def _in_expr(self, expr: ast.InExpr) -> None:
+        self._expr(expr.expr)
+        for value in expr.values or []:
+            self._expr(value)
+        if expr.query is not None:
+            self._select(expr.query)
+
     def _expr(self, expr) -> None:
         if expr is None:
             return
@@ -150,11 +157,7 @@ class Resolver:
         elif isinstance(expr, ast.UnaryOp):
             self._expr(expr.operand)
         elif isinstance(expr, ast.InExpr):
-            self._expr(expr.expr)
-            for value in expr.values or []:
-                self._expr(value)
-            if expr.query is not None:
-                self._select(expr.query)
+            self._in_expr(expr)
         elif isinstance(expr, ast.Between):
             self._expr(expr.expr)
             self._expr(expr.low)
@@ -174,7 +177,7 @@ class Resolver:
                 self._error(f"alias '{col.qualifier}' tidak terdefinisi", col.line)
             else:
                 col.resolved = _target_of(entry)
-            return
+            
         # TODO(T2): kolom tanpa qualifier (SPESIFIKASI.md bagian 4.3).
         #   - tepat satu tabel di scope terdalam -> isi col.resolved
         #   - lebih dari satu tabel              -> warning "ambigu tanpa skema"
